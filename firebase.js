@@ -1,22 +1,18 @@
 // ============================================================
-// FIREBASE CONFIG — REPLACE WITH YOUR OWN PROJECT VALUES
-// ------------------------------------------------------------
-// Go to: https://console.firebase.google.com
-//   -> Your Project -> Project Settings (gear icon) -> General
-//   -> "Your apps" -> Web app -> SDK setup and configuration
-// Copy the firebaseConfig object shown there and paste it below.
+// FIREBASE CONFIG — Riggs Family Dashboard project
 // ============================================================
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'riggs-family-dashboard.firebaseapp.com',
-  projectId: 'riggs-family-dashboard',
-  storageBucket: 'riggs-family-dashboard.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+    apiKey: 'AIzaSyD9GAS3MslrizrAh7CIe3KUiG56Sy5o0sI',
+    authDomain: 'riggs-family-dashboard.firebaseapp.com',
+    projectId: 'riggs-family-dashboard',
+    storageBucket: 'riggs-family-dashboard.firebasestorage.app',
+    messagingSenderId: '237887771733',
+    appId: '1:237887771733:web:b505dd56ceabd08408b0dc',
+    measurementId: 'G-MRF22M8ZDW',
 }
 
 const app = initializeApp(firebaseConfig)
