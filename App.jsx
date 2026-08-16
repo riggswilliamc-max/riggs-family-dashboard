@@ -67,10 +67,23 @@ function Section({ title, icon, name, placeholder, extraFields }) {
     }
     if (extraFields?.includes('dueDate')) payload.dueDate = dueDate || null
     if (extraFields?.includes('assignee')) payload.assignee = assignee || null
-    await addDoc(collection(db, name), payload)
+
+    // Clear the form immediately so it doesn't sit there with stale text
+    // while the write is in flight (Firestore round-trip can take a moment).
     setText('')
     setDueDate('')
     setAssignee('')
+
+    try {
+      await addDoc(collection(db, name), payload)
+    } catch (err) {
+      console.error('Failed to add item', err)
+      // Restore what the user typed so they don't lose it on failure.
+      setText(payload.text)
+      if (payload.dueDate) setDueDate(payload.dueDate)
+      if (payload.assignee) setAssignee(payload.assignee)
+      alert('Could not save that — check your connection and try again.')
+    }
   }
 
   const toggleDone = async (item) => {
