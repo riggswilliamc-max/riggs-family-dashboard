@@ -175,7 +175,7 @@ function Dashboard() {
       <header className="bg-white shadow px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Riggs Family Dashboard</h1>
-          <p className="text-sm text-slate-500">Jacksonville, FL</p>
+          <p className="text-sm text-slate-500">32065 - Oakleaf Plantation</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-600 hidden sm:inline">
