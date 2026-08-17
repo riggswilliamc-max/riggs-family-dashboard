@@ -451,6 +451,94 @@ function CalendarView() {
   )
 }
 
+// A "streak day" is a day where every one of Lucas's assigned chores due
+// that day got marked done. Days with nothing due don't break the streak.
+// Today is never allowed to break it — it just doesn't count until finished.
+function choreStreak(chores) {
+  const lucasChores = chores.filter((c) => c.assignee === 'Lucas' && c.dueDate)
+  const byDate = {}
+  lucasChores.forEach((c) => {
+    if (!byDate[c.dueDate]) byDate[c.dueDate] = []
+    byDate[c.dueDate].push(c)
+  })
+
+  let streak = 0
+  for (let i = 0; i < 60; i++) {
+    const dateStr = addDaysStr(-i)
+    const dayChores = byDate[dateStr] || []
+    if (dayChores.length === 0) continue
+    const allDone = dayChores.every((c) => c.done)
+    if (allDone) {
+      streak += 1
+    } else if (i === 0) {
+      continue // today isn't finished yet — don't break, just don't count it
+    } else {
+      break
+    }
+  }
+  return streak
+}
+
+function choreBadge(count) {
+  if (count >= 30) return { label: 'Chore Master', icon: '🏆' }
+  if (count >= 15) return { label: 'Superstar', icon: '🌟' }
+  if (count >= 5) return { label: 'Chore Champ', icon: '⭐' }
+  return { label: 'Getting Started', icon: '🌱' }
+}
+
+function LucasChoreProgress() {
+  const chores = useCollection('chores')
+  const lucasChores = chores.filter((c) => c.assignee === 'Lucas')
+  const completedCount = lucasChores.filter((c) => c.done).length
+  const points = completedCount * 10
+  const streak = choreStreak(chores)
+  const badge = choreBadge(completedCount)
+
+  const nextThreshold =
+    completedCount >= 30 ? null : completedCount >= 15 ? 30 : completedCount >= 5 ? 15 : 5
+  const progressPct = nextThreshold
+    ? Math.min(100, Math.round((completedCount / nextThreshold) * 100))
+    : 100
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-5 mb-4">
+      <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+        <span>{badge.icon}</span> Lucas's Chore Progress
+      </h2>
+      <div className="flex items-center gap-6 flex-wrap mb-3">
+        <div>
+          <p className="text-2xl font-bold text-slate-800">{points}</p>
+          <p className="text-xs text-slate-500">Points</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-slate-800">
+            {streak} {streak === 1 ? 'day' : 'days'}
+          </p>
+          <p className="text-xs text-slate-500">Current streak 🔥</p>
+        </div>
+        <div>
+          <p className="text-sm font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 inline-block">
+            {badge.label}
+          </p>
+        </div>
+      </div>
+      {nextThreshold && (
+        <div>
+          <div className="w-full bg-slate-100 rounded-full h-2">
+            <div
+              className="bg-emerald-500 h-2 rounded-full transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            {completedCount}/{nextThreshold} chores to next badge
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const OAKLEAF_LAT = 30.1735
 const OAKLEAF_LON = -81.7573
 
@@ -950,13 +1038,16 @@ function Dashboard() {
           />
         )}
         {activeTab === 'chores' && (
-          <Section
-            title="Chore Chart"
-            icon="🧹"
-            name="chores"
-            placeholder="Add a chore..."
-            extraFields={['dueDate', 'assignee']}
-          />
+          <>
+            <LucasChoreProgress />
+            <Section
+              title="Chore Chart"
+              icon="🧹"
+              name="chores"
+              placeholder="Add a chore..."
+              extraFields={['dueDate', 'assignee']}
+            />
+          </>
         )}
         {activeTab === 'shopping' && (
           <Section title="Shopping List" icon="🛒" name="shopping" placeholder="Add an item..." />
