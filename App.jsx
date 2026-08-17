@@ -25,6 +25,23 @@ function useCollection(name) {
   return items
 }
 
+function todayStr() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function addDaysStr(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function Login() {
   const handleLogin = async () => {
     try {
@@ -131,7 +148,7 @@ function Section({ title, icon, name, placeholder, extraFields }) {
         </button>
       </form>
 
-      <ul className="space-y-2 max-h-72 overflow-y-auto">
+      <ul className="space-y-2 max-h-96 overflow-y-auto">
         {items.length === 0 && (
           <li className="text-sm text-slate-400 italic">Nothing here yet.</li>
         )}
@@ -168,8 +185,112 @@ function Section({ title, icon, name, placeholder, extraFields }) {
   )
 }
 
+function HomeDashboard({ onNavigate }) {
+  const tasks = useCollection('tasks')
+  const chores = useCollection('chores')
+  const shopping = useCollection('shopping')
+  const events = useCollection('events')
+
+  const today = todayStr()
+  const weekAhead = addDaysStr(7)
+
+  const withType = [
+    ...tasks.map((t) => ({ ...t, type: 'Task', typeIcon: '✓' })),
+    ...chores.map((c) => ({ ...c, type: 'Chore', typeIcon: '🧹' })),
+    ...events.map((e) => ({ ...e, type: 'Event', typeIcon: '📅' })),
+  ]
+
+  const dueToday = withType.filter((i) => !i.done && i.dueDate === today)
+
+  const upcoming = withType
+    .filter((i) => !i.done && i.dueDate && i.dueDate > today && i.dueDate <= weekAhead)
+    .sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1))
+
+  const tasksDue = tasks.filter((t) => !t.done && t.dueDate).length
+  const choresDue = chores.filter((c) => !c.done && c.dueDate).length
+  const itemsToBuy = shopping.filter((s) => !s.done).length
+
+  return (
+    <div className="space-y-6">
+      {dueToday.length > 0 && (
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4">
+          <p className="font-semibold mb-2">
+            ⚠️ Due Today: {dueToday.length} item{dueToday.length > 1 ? 's' : ''}
+          </p>
+          <ul className="space-y-1 text-sm">
+            {dueToday.map((item) => (
+              <li key={item.id}>
+                {item.typeIcon} {item.text}{' '}
+                <span className="text-red-500">({item.type})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <button
+          onClick={() => onNavigate('tasks')}
+          className="bg-white rounded-2xl shadow p-5 text-left hover:shadow-md transition"
+        >
+          <p className="text-sm text-slate-500">Tasks Due</p>
+          <p className="text-3xl font-bold">{tasksDue}</p>
+        </button>
+        <button
+          onClick={() => onNavigate('chores')}
+          className="bg-white rounded-2xl shadow p-5 text-left hover:shadow-md transition"
+        >
+          <p className="text-sm text-slate-500">Chores Due</p>
+          <p className="text-3xl font-bold">{choresDue}</p>
+        </button>
+        <button
+          onClick={() => onNavigate('shopping')}
+          className="bg-white rounded-2xl shadow p-5 text-left hover:shadow-md transition"
+        >
+          <p className="text-sm text-slate-500">Items to Buy</p>
+          <p className="text-3xl font-bold">{itemsToBuy}</p>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow p-5">
+        <h2 className="text-lg font-semibold mb-3">Upcoming This Week</h2>
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">Nothing coming up this week.</p>
+        ) : (
+          <ul className="space-y-2">
+            {upcoming.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between border-b last:border-b-0 pb-2 text-sm"
+              >
+                <span>
+                  {item.typeIcon} {item.text}
+                </span>
+                <span className="text-slate-400">
+                  {item.dueDate} · {item.type}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Dashboard() {
   const user = auth.currentUser
+  const [activeTab, setActiveTab] = useState('home')
+
+  const tabs = [
+    { id: 'home', label: 'Home', icon: '🏠' },
+    { id: 'tasks', label: 'Tasks', icon: '✓' },
+    { id: 'chores', label: 'Chore Chart', icon: '🧹' },
+    { id: 'shopping', label: 'Shopping', icon: '🛒' },
+    { id: 'calendar', label: 'Calendar', icon: '📅' },
+    { id: 'notes', label: 'Notes', icon: '📝' },
+  ]
+
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="bg-white shadow px-6 py-4 flex items-center justify-between">
@@ -197,33 +318,62 @@ function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Section
-          title="Tasks"
-          icon="✓"
-          name="tasks"
-          placeholder="Add a task..."
-          extraFields={['dueDate']}
-        />
-        <Section
-          title="Chore Chart"
-          icon="🧹"
-          name="chores"
-          placeholder="Add a chore..."
-          extraFields={['dueDate', 'assignee']}
-        />
-        <Section
-          title="Shopping List"
-          icon="🛒"
-          name="shopping"
-          placeholder="Add an item..."
-        />
-        <Section
-          title="Notes"
-          icon="📝"
-          name="notes"
-          placeholder="Leave a note for the family..."
-        />
+      <nav className="bg-white border-b px-6 flex gap-1 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition ${
+              activeTab === tab.id
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="max-w-4xl mx-auto p-6">
+        {activeTab === 'home' && <HomeDashboard onNavigate={setActiveTab} />}
+        {activeTab === 'tasks' && (
+          <Section
+            title="Tasks"
+            icon="✓"
+            name="tasks"
+            placeholder="Add a task..."
+            extraFields={['dueDate']}
+          />
+        )}
+        {activeTab === 'chores' && (
+          <Section
+            title="Chore Chart"
+            icon="🧹"
+            name="chores"
+            placeholder="Add a chore..."
+            extraFields={['dueDate', 'assignee']}
+          />
+        )}
+        {activeTab === 'shopping' && (
+          <Section title="Shopping List" icon="🛒" name="shopping" placeholder="Add an item..." />
+        )}
+        {activeTab === 'calendar' && (
+          <Section
+            title="Calendar"
+            icon="📅"
+            name="events"
+            placeholder="Add an event..."
+            extraFields={['dueDate']}
+          />
+        )}
+        {activeTab === 'notes' && (
+          <Section
+            title="Notes"
+            icon="📝"
+            name="notes"
+            placeholder="Leave a note for the family..."
+          />
+        )}
       </main>
     </div>
   )
