@@ -448,44 +448,6 @@ function eventCategory(item) {
   return item.category === 'Family' ? 'Family' : 'School'
 }
 
-// TEMPORARY: one-time import of the 2026-2027 school calendar, sourced from
-// Eagles View Academy's published .ics events feed (evajax.com). Only covers
-// through mid-December 2026 — the school hadn't posted spring semester yet
-// as of this export. Remove this block (and the import button) after running
-// it once; re-import later with a fresh .ics once spring events are posted.
-const IMPORT_EVENTS_2026_2027 = [
-  { text: 'Senior Parent/Student Advising Meeting (6:30pm)', dueDate: '2026-08-20' },
-  { text: 'Senior Photos', dueDate: '2026-08-29' },
-  { text: 'School-Wide Fall Fundraiser', dueDate: '2026-08-31' },
-  { text: 'School Pictures', dueDate: '2026-09-02' },
-  { text: 'Mid-Quarter Progress Report', dueDate: '2026-09-04' },
-  { text: 'Labor Day (No School)', dueDate: '2026-09-07' },
-  { text: "Grandparent's Day Chapel", dueDate: '2026-09-11' },
-  { text: 'Book Fair', dueDate: '2026-09-14' },
-  { text: 'Open House (6:00pm)', dueDate: '2026-09-17' },
-  { text: 'NWEA Fall Testing', dueDate: '2026-09-21' },
-  { text: 'Picture Retakes', dueDate: '2026-09-30' },
-  { text: 'Fall Blood Drive (8:00am-1:00pm)', dueDate: '2026-10-02' },
-  { text: '1st Nine-Week Period Ends', dueDate: '2026-10-07' },
-  { text: 'Professional Development Day (No School)', dueDate: '2026-10-09' },
-  { text: 'Homecoming King Competition', dueDate: '2026-10-12' },
-  { text: 'Homecoming/Spirit Week', dueDate: '2026-10-12' },
-  { text: 'Report Cards Posted (1st Nine-Week Period)', dueDate: '2026-10-14' },
-  { text: 'Homecoming Football Game (7:00pm)', dueDate: '2026-10-16' },
-  { text: 'Homecoming Dance', dueDate: '2026-10-17' },
-  { text: 'No School for K5-9th and 12th Grades', dueDate: '2026-10-19' },
-  { text: 'Testing Day for 10th-11th Grade (Half-Day)', dueDate: '2026-10-19' },
-  { text: 'School-Wide Food Drive', dueDate: '2026-10-19' },
-  { text: 'Mid-Quarter Progress Report', dueDate: '2026-11-06' },
-  { text: "Veteran's Day Observance (No School)", dueDate: '2026-11-11' },
-  { text: 'Fall Festival', dueDate: '2026-11-14' },
-  { text: 'Thanksgiving Break (No School)', dueDate: '2026-11-23' },
-  { text: 'Winter Blood Drive (8:00am-1:00pm)', dueDate: '2026-12-04' },
-  { text: 'Elementary Christmas Program', dueDate: '2026-12-08' },
-  { text: 'Semester Exams (7th-12th Grade)', dueDate: '2026-12-15' },
-  { text: 'Semester Exams Half Days (All Grades)', dueDate: '2026-12-17' },
-]
-
 function toDateStr(d) {
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -547,35 +509,6 @@ function CalendarView() {
     setSelectedDate(today)
   }
 
-  // TEMPORARY: see IMPORT_EVENTS_2026_2027 above. Skips anything already
-  // matching by date+text so it's safe to click more than once.
-  const [importing, setImporting] = useState(false)
-  const [importDone, setImportDone] = useState(false)
-  const importSchoolEvents = async () => {
-    setImporting(true)
-    try {
-      const existingKeys = new Set(events.map((ev) => `${ev.dueDate}|${ev.text}`))
-      const toAdd = IMPORT_EVENTS_2026_2027.filter((e) => !existingKeys.has(`${e.dueDate}|${e.text}`))
-      await Promise.all(
-        toAdd.map((e) =>
-          addDoc(collection(db, 'events'), {
-            text: e.text,
-            done: false,
-            dueDate: e.dueDate,
-            category: 'School',
-            createdBy: auth.currentUser?.displayName || 'Someone',
-            createdAt: serverTimestamp(),
-          })
-        )
-      )
-    } catch (err) {
-      console.error('Failed to import school events', err)
-    } finally {
-      setImporting(false)
-      setImportDone(true)
-    }
-  }
-
   const addEvent = async (e) => {
     e.preventDefault()
     if (!text.trim()) return
@@ -612,20 +545,6 @@ function CalendarView() {
           <span className="flex items-center gap-1 dark:text-slate-300">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Family
           </span>
-          {!importDone && (
-            <button
-              onClick={importSchoolEvents}
-              disabled={importing}
-              className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 underline whitespace-nowrap disabled:opacity-50"
-            >
-              {importing ? 'Importing…' : 'Import 2026-2027 school events'}
-            </button>
-          )}
-          {importDone && (
-            <span className="text-xs text-emerald-500 dark:text-emerald-400 whitespace-nowrap">
-              Events imported ✓
-            </span>
-          )}
         </div>
       </div>
 
