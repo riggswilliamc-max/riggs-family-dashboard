@@ -297,6 +297,34 @@ function WeatherWidget() {
   )
 }
 
+const FAMILY_ALBUM_URL = 'https://photos.app.goo.gl/jRkx92CHNsQUEZUP9'
+
+function PhotoWidget() {
+  return (
+    <div className="bg-white rounded-2xl shadow p-5">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">📷</span>
+          <div>
+            <h2 className="text-lg font-semibold">Family Photos</h2>
+            <p className="text-sm text-slate-500">
+              Shared album — add photos anytime from the Google Photos app.
+            </p>
+          </div>
+        </div>
+        <a
+          href={FAMILY_ALBUM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg whitespace-nowrap"
+        >
+          View Slideshow
+        </a>
+      </div>
+    </div>
+  )
+}
+
 function HomeDashboard({ onNavigate }) {
   const tasks = useCollection('tasks')
   const chores = useCollection('chores')
@@ -341,6 +369,8 @@ function HomeDashboard({ onNavigate }) {
       )}
 
       <WeatherWidget />
+
+      <PhotoWidget />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <button
