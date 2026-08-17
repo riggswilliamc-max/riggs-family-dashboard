@@ -215,12 +215,20 @@ function weatherDescription(code) {
   return map[code] || { label: 'Weather', icon: '🌡️' }
 }
 
+function dayLabel(dateStr, index) {
+  if (index === 0) return 'Today'
+  // Parse as a local date (not UTC) so it matches the calendar day Open-Meteo means.
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  return date.toLocaleDateString('en-US', { weekday: 'short' })
+}
+
 function WeatherWidget() {
   const [weather, setWeather] = useState(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${OAKLEAF_LAT}&longitude=${OAKLEAF_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York`
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${OAKLEAF_LAT}&longitude=${OAKLEAF_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=7&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York`
     fetch(url)
       .then((res) => res.json())
       .then((data) => setWeather(data))
@@ -243,26 +251,48 @@ function WeatherWidget() {
   const { label, icon } = weatherDescription(weather.current?.weather_code)
   const hi = Math.round(weather.daily?.temperature_2m_max?.[0])
   const lo = Math.round(weather.daily?.temperature_2m_min?.[0])
+  const days = weather.daily?.time || []
 
   return (
-    <div className="bg-white rounded-2xl shadow p-5 flex items-center justify-between flex-wrap gap-4">
-      <div>
-        <p className="text-sm text-slate-500">Oakleaf Plantation, FL</p>
-        <p className="text-3xl font-bold">
-          {Math.round(weather.current?.temperature_2m)}°F
-        </p>
-        <p className="text-sm text-slate-600">
-          {icon} {label}
-        </p>
+    <div className="bg-white rounded-2xl shadow p-5">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <p className="text-sm text-slate-500">Oakleaf Plantation, FL</p>
+          <p className="text-3xl font-bold">
+            {Math.round(weather.current?.temperature_2m)}°F
+          </p>
+          <p className="text-sm text-slate-600">
+            {icon} {label}
+          </p>
+        </div>
+        <div className="text-right text-sm text-slate-500">
+          <p>
+            H: {hi}° L: {lo}°
+          </p>
+          <p>Feels like {Math.round(weather.current?.apparent_temperature)}°</p>
+          <p>Humidity {weather.current?.relative_humidity_2m}%</p>
+          <p>Wind {Math.round(weather.current?.wind_speed_10m)} mph</p>
+        </div>
       </div>
-      <div className="text-right text-sm text-slate-500">
-        <p>
-          H: {hi}° L: {lo}°
-        </p>
-        <p>Feels like {Math.round(weather.current?.apparent_temperature)}°</p>
-        <p>Humidity {weather.current?.relative_humidity_2m}%</p>
-        <p>Wind {Math.round(weather.current?.wind_speed_10m)} mph</p>
-      </div>
+
+      {days.length > 0 && (
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mt-4 pt-4 border-t">
+          {days.map((dateStr, i) => {
+            const dayIcon = weatherDescription(weather.daily.weather_code?.[i]).icon
+            const dayHi = Math.round(weather.daily.temperature_2m_max?.[i])
+            const dayLo = Math.round(weather.daily.temperature_2m_min?.[i])
+            return (
+              <div key={dateStr} className="text-center">
+                <p className="text-xs font-medium text-slate-500">{dayLabel(dateStr, i)}</p>
+                <p className="text-xl leading-none my-1">{dayIcon}</p>
+                <p className="text-xs text-slate-700">
+                  {dayHi}° <span className="text-slate-400">{dayLo}°</span>
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
