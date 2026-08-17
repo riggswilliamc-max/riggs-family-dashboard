@@ -509,24 +509,6 @@ function CalendarView() {
     setSelectedDate(today)
   }
 
-  // TEMPORARY: one-time cleanup for the stale 2025-2026 school calendar
-  // import (those docs predate the `category` field, so they're the only
-  // ones this can match). Remove this block after running it once.
-  const legacyEventCount = events.filter((ev) => !ev.category).length
-  const [wiping, setWiping] = useState(false)
-  const wipeLegacyEvents = async () => {
-    const legacy = events.filter((ev) => !ev.category)
-    if (legacy.length === 0) return
-    setWiping(true)
-    try {
-      await Promise.all(legacy.map((ev) => deleteDoc(doc(db, 'events', ev.id))))
-    } catch (err) {
-      console.error('Failed to wipe legacy events', err)
-    } finally {
-      setWiping(false)
-    }
-  }
-
   const addEvent = async (e) => {
     e.preventDefault()
     if (!text.trim()) return
@@ -563,15 +545,6 @@ function CalendarView() {
           <span className="flex items-center gap-1 dark:text-slate-300">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Family
           </span>
-          {legacyEventCount > 0 && (
-            <button
-              onClick={wipeLegacyEvents}
-              disabled={wiping}
-              className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 underline whitespace-nowrap disabled:opacity-50"
-            >
-              {wiping ? 'Deleting…' : `Delete ${legacyEventCount} 2025-2026 events`}
-            </button>
-          )}
         </div>
       </div>
 
