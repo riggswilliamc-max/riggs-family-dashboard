@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import {
   collection,
@@ -11,8 +11,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { auth, googleProvider, db, storage } from './firebase'
+import { auth, googleProvider, db } from './firebase'
 
 function useCollection(name) {
   const [items, setItems] = useState([])
@@ -651,97 +650,6 @@ function WeatherWidget() {
   )
 }
 
-function PhotoSlideshow() {
-  const photos = useCollection('photos')
-  const [index, setIndex] = useState(0)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef(null)
-
-  useEffect(() => {
-    if (photos.length < 2) return
-    const timer = setInterval(() => {
-      setIndex((i) => (i + 1) % photos.length)
-    }, 6000)
-    return () => clearInterval(timer)
-  }, [photos.length])
-
-  useEffect(() => {
-    if (index >= photos.length) setIndex(0)
-  }, [photos.length, index])
-
-  const handleFiles = async (e) => {
-    const files = Array.from(e.target.files || [])
-    if (!files.length) return
-    setUploading(true)
-    try {
-      for (const file of files) {
-        const path = `photos/${Date.now()}_${file.name}`
-        const ref = storageRef(storage, path)
-        await uploadBytes(ref, file)
-        const url = await getDownloadURL(ref)
-        await addDoc(collection(db, 'photos'), {
-          url,
-          path,
-          uploadedBy: auth.currentUser?.displayName || 'Someone',
-          createdAt: serverTimestamp(),
-        })
-      }
-    } catch (err) {
-      console.error('Photo upload failed', err)
-      alert('Could not upload one or more photos — check your connection and try again.')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-2xl shadow p-5">
-      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <span>📷</span> Family Photos
-        </h2>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleFiles}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 whitespace-nowrap"
-          >
-            {uploading ? 'Uploading…' : '+ Add Photos'}
-          </button>
-        </div>
-      </div>
-
-      {photos.length === 0 ? (
-        <p className="text-sm text-slate-400 italic py-10 text-center">
-          No photos yet — tap "+ Add Photos" to get the slideshow started.
-        </p>
-      ) : (
-        <div className="relative w-full h-64 sm:h-80 rounded-xl overflow-hidden bg-slate-100">
-          {photos.map((p, i) => (
-            <img
-              key={p.id}
-              src={p.url}
-              alt=""
-              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-                i === index ? 'opacity-100' : 'opacity-0'
-              }`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function timeGreeting() {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
@@ -915,8 +823,6 @@ function HomeDashboard({ onNavigate }) {
       )}
 
       <WeatherWidget />
-
-      <PhotoSlideshow />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <button
