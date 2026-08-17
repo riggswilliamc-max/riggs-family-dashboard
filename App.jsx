@@ -68,6 +68,17 @@ function Login() {
   )
 }
 
+const FAMILY_MEMBERS = [
+  { name: 'William', badge: 'bg-blue-100 text-blue-700' },
+  { name: 'Jessica', badge: 'bg-pink-100 text-pink-700' },
+  { name: 'Lucas', badge: 'bg-emerald-100 text-emerald-700' },
+]
+
+function assigneeBadgeClass(name) {
+  const match = FAMILY_MEMBERS.find((m) => m.name === name)
+  return match ? match.badge : 'bg-slate-100 text-slate-600'
+}
+
 function Section({ title, icon, name, placeholder, extraFields }) {
   const items = useCollection(name)
   const [text, setText] = useState('')
@@ -134,12 +145,18 @@ function Section({ title, icon, name, placeholder, extraFields }) {
           />
         )}
         {extraFields?.includes('assignee') && (
-          <input
+          <select
             value={assignee}
             onChange={(e) => setAssignee(e.target.value)}
-            placeholder="Assign to"
-            className="border rounded-lg px-3 py-2 text-sm w-28"
-          />
+            className="border rounded-lg px-3 py-2 text-sm w-32 bg-white text-slate-700"
+          >
+            <option value="">Assign to…</option>
+            {FAMILY_MEMBERS.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          </select>
         )}
         <button
           type="submit"
@@ -169,7 +186,13 @@ function Section({ title, icon, name, placeholder, extraFields }) {
                 <span className="text-xs text-slate-400 ml-2">due {item.dueDate}</span>
               ) : null}
               {item.assignee ? (
-                <span className="text-xs text-slate-400 ml-2">→ {item.assignee}</span>
+                <span
+                  className={`text-xs ml-2 px-2 py-0.5 rounded-full font-medium ${assigneeBadgeClass(
+                    item.assignee
+                  )}`}
+                >
+                  {item.assignee}
+                </span>
               ) : null}
             </button>
             <button
@@ -389,6 +412,113 @@ function PhotoSlideshow() {
   )
 }
 
+function timeGreeting() {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function formatClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function GameTimeTimer() {
+  const [minutes, setMinutes] = useState(30)
+  const [secondsLeft, setSecondsLeft] = useState(null) // null = idle, not started
+  const [running, setRunning] = useState(false)
+  const [finished, setFinished] = useState(false)
+
+  useEffect(() => {
+    if (!running) return
+    if (secondsLeft <= 0) {
+      setRunning(false)
+      setFinished(true)
+      return
+    }
+    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [running, secondsLeft])
+
+  const start = () => {
+    setFinished(false)
+    setSecondsLeft(minutes * 60)
+    setRunning(true)
+  }
+  const pause = () => setRunning(false)
+  const resume = () => secondsLeft > 0 && setRunning(true)
+  const reset = () => {
+    setRunning(false)
+    setFinished(false)
+    setSecondsLeft(null)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-5">
+      <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+        <span>🎮</span> Game Time
+      </h2>
+
+      {finished ? (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-lg font-semibold text-amber-600">⏰ Time's up!</p>
+          <button
+            onClick={reset}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+          >
+            Start New Timer
+          </button>
+        </div>
+      ) : secondsLeft === null ? (
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="text-sm text-slate-600">Minutes:</label>
+          <input
+            type="number"
+            min="1"
+            max="180"
+            value={minutes}
+            onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))}
+            className="border rounded-lg px-3 py-2 text-sm w-20"
+          />
+          <button
+            onClick={start}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+          >
+            Start
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4 flex-wrap">
+          <p className="text-3xl font-bold tabular-nums">{formatClock(secondsLeft)}</p>
+          {running ? (
+            <button
+              onClick={pause}
+              className="bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium px-4 py-2 rounded-lg"
+            >
+              Pause
+            </button>
+          ) : (
+            <button
+              onClick={resume}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+            >
+              Resume
+            </button>
+          )}
+          <button
+            onClick={reset}
+            className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HomeDashboard({ onNavigate }) {
   const tasks = useCollection('tasks')
   const chores = useCollection('chores')
@@ -414,8 +544,30 @@ function HomeDashboard({ onNavigate }) {
   const choresDue = chores.filter((c) => !c.done && c.dueDate).length
   const itemsToBuy = shopping.filter((s) => !s.done).length
 
+  const firstName = (auth.currentUser?.displayName || '').split(' ')[0] || 'there'
+  const myChoresToday = chores.filter(
+    (c) => !c.done && c.dueDate === today && c.assignee === firstName
+  ).length
+  let greetingSubtext = "Nothing urgent today — enjoy it."
+  if (myChoresToday > 0) {
+    greetingSubtext = `You've got ${myChoresToday} chore${
+      myChoresToday > 1 ? 's' : ''
+    } on the list today.`
+  } else if (dueToday.length > 0) {
+    greetingSubtext = `${dueToday.length} item${
+      dueToday.length > 1 ? 's are' : ' is'
+    } due today for the family.`
+  }
+
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">
+          {timeGreeting()}, {firstName}
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">{greetingSubtext}</p>
+      </div>
+
       {dueToday.length > 0 && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4">
           <p className="font-semibold mb-2">
@@ -459,6 +611,8 @@ function HomeDashboard({ onNavigate }) {
           <p className="text-3xl font-bold">{itemsToBuy}</p>
         </button>
       </div>
+
+      <GameTimeTimer />
 
       <div className="bg-white rounded-2xl shadow p-5">
         <h2 className="text-lg font-semibold mb-3">Upcoming This Week</h2>
