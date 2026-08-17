@@ -209,6 +209,248 @@ function Section({ title, icon, name, placeholder, extraFields }) {
   )
 }
 
+const CATEGORY_STYLES = {
+  School: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700' },
+  Family: { dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
+}
+
+// Events created before the category field existed are all from Lucas's
+// school calendar import, so they fall back to "School" rather than "Family".
+function eventCategory(item) {
+  return item.category === 'Family' ? 'Family' : 'School'
+}
+
+function toDateStr(d) {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function monthMatrix(year, month) {
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const daysInPrevMonth = new Date(year, month, 0).getDate()
+  const cells = []
+  for (let i = firstWeekday - 1; i >= 0; i--) {
+    const day = daysInPrevMonth - i
+    cells.push({ dateStr: toDateStr(new Date(year, month - 1, day)), day, inMonth: false })
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push({ dateStr: toDateStr(new Date(year, month, day)), day, inMonth: true })
+  }
+  let nextDay = 1
+  while (cells.length < 42) {
+    cells.push({ dateStr: toDateStr(new Date(year, month + 1, nextDay)), day: nextDay, inMonth: false })
+    nextDay += 1
+  }
+  return cells
+}
+
+function CalendarView() {
+  const events = useCollection('events')
+  const today = todayStr()
+  const now = new Date()
+  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() })
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [text, setText] = useState('')
+  const [category, setCategory] = useState('Family')
+
+  const cells = monthMatrix(cursor.year, cursor.month)
+  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })
+
+  const eventsByDate = {}
+  events.forEach((ev) => {
+    if (!ev.dueDate) return
+    if (!eventsByDate[ev.dueDate]) eventsByDate[ev.dueDate] = []
+    eventsByDate[ev.dueDate].push(ev)
+  })
+
+  const goPrev = () =>
+    setCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }))
+  const goNext = () =>
+    setCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }))
+  const goToday = () => {
+    setCursor({ year: now.getFullYear(), month: now.getMonth() })
+    setSelectedDate(today)
+  }
+
+  const addEvent = async (e) => {
+    e.preventDefault()
+    if (!text.trim()) return
+    const payload = {
+      text: text.trim(),
+      done: false,
+      dueDate: selectedDate,
+      category,
+      createdBy: auth.currentUser?.displayName || 'Someone',
+      createdAt: serverTimestamp(),
+    }
+    setText('')
+    try {
+      await addDoc(collection(db, 'events'), payload)
+    } catch (err) {
+      console.error('Failed to add event', err)
+      setText(payload.text)
+      alert('Could not save that — check your connection and try again.')
+    }
+  }
+
+  const removeEvent = async (item) => {
+    await deleteDoc(doc(db, 'events', item.id))
+  }
+
+  const selectedEvents = (eventsByDate[selectedDate] || []).slice().sort((a, b) => (a.text > b.text ? 1 : -1))
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <span>📅</span> Calendar
+        </h2>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> School
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Family
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={goPrev}
+          className="px-3 py-1.5 text-sm rounded-lg bg-slate-100 hover:bg-slate-200"
+        >
+          ← Prev
+        </button>
+        <div className="flex items-center gap-2">
+          <p className="font-semibold text-slate-800">{monthLabel}</p>
+          <button
+            onClick={goToday}
+            className="text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"
+          >
+            Today
+          </button>
+        </div>
+        <button
+          onClick={goNext}
+          className="px-3 py-1.5 text-sm rounded-lg bg-slate-100 hover:bg-slate-200"
+        >
+          Next →
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500 mb-1">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((cell) => {
+          const dayEvents = eventsByDate[cell.dateStr] || []
+          const isToday = cell.dateStr === today
+          const isSelected = cell.dateStr === selectedDate
+          return (
+            <button
+              key={cell.dateStr}
+              onClick={() => setSelectedDate(cell.dateStr)}
+              className={`aspect-square rounded-lg p-1 text-left flex flex-col items-start justify-start border transition ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50'
+                  : isToday
+                  ? 'border-blue-300 bg-white'
+                  : 'border-transparent bg-slate-50 hover:bg-slate-100'
+              } ${cell.inMonth ? '' : 'opacity-40'}`}
+            >
+              <span className={`text-xs ${isToday ? 'font-bold text-blue-600' : 'text-slate-600'}`}>
+                {cell.day}
+              </span>
+              <div className="flex flex-wrap gap-0.5 mt-1">
+                {dayEvents.slice(0, 3).map((ev) => (
+                  <span
+                    key={ev.id}
+                    className={`w-1.5 h-1.5 rounded-full ${CATEGORY_STYLES[eventCategory(ev)].dot}`}
+                  />
+                ))}
+                {dayEvents.length > 3 && (
+                  <span className="text-[9px] text-slate-400">+{dayEvents.length - 3}</span>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mt-5 pt-4 border-t">
+        <p className="text-sm font-semibold text-slate-700 mb-2">
+          {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          })}
+        </p>
+
+        {selectedEvents.length === 0 ? (
+          <p className="text-sm text-slate-400 italic mb-3">No events this day.</p>
+        ) : (
+          <ul className="space-y-1 mb-3">
+            {selectedEvents.map((ev) => (
+              <li key={ev.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      CATEGORY_STYLES[eventCategory(ev)].badge
+                    }`}
+                  >
+                    {eventCategory(ev)}
+                  </span>
+                  {ev.text}
+                </span>
+                <button
+                  onClick={() => removeEvent(ev)}
+                  className="text-slate-400 hover:text-red-500"
+                  title="Delete"
+                >
+                  🗑️
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form onSubmit={addEvent} className="flex flex-wrap gap-2">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Add an event..."
+            className="flex-1 min-w-[140px] border rounded-lg px-3 py-2 text-sm"
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm bg-white text-slate-700"
+          >
+            <option value="Family">Family</option>
+            <option value="School">School</option>
+          </select>
+          <button
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+          >
+            Add
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 const OAKLEAF_LAT = 30.1735
 const OAKLEAF_LON = -81.7573
 
@@ -719,15 +961,7 @@ function Dashboard() {
         {activeTab === 'shopping' && (
           <Section title="Shopping List" icon="🛒" name="shopping" placeholder="Add an item..." />
         )}
-        {activeTab === 'calendar' && (
-          <Section
-            title="Calendar"
-            icon="📅"
-            name="events"
-            placeholder="Add an event..."
-            extraFields={['dueDate']}
-          />
-        )}
+        {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'notes' && (
           <Section
             title="Notes"
