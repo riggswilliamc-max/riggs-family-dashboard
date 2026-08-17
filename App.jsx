@@ -185,6 +185,88 @@ function Section({ title, icon, name, placeholder, extraFields }) {
   )
 }
 
+const OAKLEAF_LAT = 30.1735
+const OAKLEAF_LON = -81.7573
+
+function weatherDescription(code) {
+  const map = {
+    0: { label: 'Clear sky', icon: '☀️' },
+    1: { label: 'Mostly clear', icon: '🌤️' },
+    2: { label: 'Partly cloudy', icon: '⛅' },
+    3: { label: 'Overcast', icon: '☁️' },
+    45: { label: 'Fog', icon: '🌫️' },
+    48: { label: 'Fog', icon: '🌫️' },
+    51: { label: 'Light drizzle', icon: '🌦️' },
+    53: { label: 'Drizzle', icon: '🌦️' },
+    55: { label: 'Heavy drizzle', icon: '🌧️' },
+    61: { label: 'Light rain', icon: '🌦️' },
+    63: { label: 'Rain', icon: '🌧️' },
+    65: { label: 'Heavy rain', icon: '🌧️' },
+    71: { label: 'Light snow', icon: '🌨️' },
+    73: { label: 'Snow', icon: '🌨️' },
+    75: { label: 'Heavy snow', icon: '❄️' },
+    80: { label: 'Rain showers', icon: '🌦️' },
+    81: { label: 'Rain showers', icon: '🌧️' },
+    82: { label: 'Violent showers', icon: '⛈️' },
+    95: { label: 'Thunderstorm', icon: '⛈️' },
+    96: { label: 'Thunderstorm w/ hail', icon: '⛈️' },
+    99: { label: 'Thunderstorm w/ hail', icon: '⛈️' },
+  }
+  return map[code] || { label: 'Weather', icon: '🌡️' }
+}
+
+function WeatherWidget() {
+  const [weather, setWeather] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${OAKLEAF_LAT}&longitude=${OAKLEAF_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York`
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => setWeather(data))
+      .catch((err) => {
+        console.error('Weather fetch failed', err)
+        setError(true)
+      })
+  }, [])
+
+  if (error) return null // fail silently rather than break the dashboard
+
+  if (!weather) {
+    return (
+      <div className="bg-white rounded-2xl shadow p-5 text-sm text-slate-400">
+        Loading weather…
+      </div>
+    )
+  }
+
+  const { label, icon } = weatherDescription(weather.current?.weather_code)
+  const hi = Math.round(weather.daily?.temperature_2m_max?.[0])
+  const lo = Math.round(weather.daily?.temperature_2m_min?.[0])
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-5 flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <p className="text-sm text-slate-500">Oakleaf Plantation, FL</p>
+        <p className="text-3xl font-bold">
+          {Math.round(weather.current?.temperature_2m)}°F
+        </p>
+        <p className="text-sm text-slate-600">
+          {icon} {label}
+        </p>
+      </div>
+      <div className="text-right text-sm text-slate-500">
+        <p>
+          H: {hi}° L: {lo}°
+        </p>
+        <p>Feels like {Math.round(weather.current?.apparent_temperature)}°</p>
+        <p>Humidity {weather.current?.relative_humidity_2m}%</p>
+        <p>Wind {Math.round(weather.current?.wind_speed_10m)} mph</p>
+      </div>
+    </div>
+  )
+}
+
 function HomeDashboard({ onNavigate }) {
   const tasks = useCollection('tasks')
   const chores = useCollection('chores')
@@ -227,6 +309,8 @@ function HomeDashboard({ onNavigate }) {
           </ul>
         </div>
       )}
+
+      <WeatherWidget />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <button
