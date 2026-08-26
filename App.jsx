@@ -145,6 +145,51 @@ function useTheme() {
   return { theme, toggleTheme }
 }
 
+// Browser notification permission, tracked so the header can show an
+// "Enable notifications" bell until the user grants it.
+function useNotifications() {
+  const [permission, setPermission] = useState(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  )
+
+  const requestPermission = async () => {
+    if (!('Notification' in window)) return
+    try {
+      const result = await Notification.requestPermission()
+      setPermission(result)
+    } catch (err) {
+      console.error('Notification permission request failed', err)
+    }
+  }
+
+  return { permission, requestPermission }
+}
+
+// Fires a single once-per-day "here's what's due today" browser
+// notification. Safe to call on every render — it no-ops once it's already
+// notified for today (tracked in localStorage), so nothing spams the user
+// as items load in from Firestore.
+function notifyDueToday(items) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+
+  const todayKey = todayStr()
+  if (window.localStorage.getItem('lastNotifiedDate') === todayKey) return
+  window.localStorage.setItem('lastNotifiedDate', todayKey)
+
+  if (items.length === 0) return
+
+  const title = items.length === 1 ? '1 thing due today' : `${items.length} things due today`
+  const preview = items.slice(0, 5).map((i) => `${i.typeIcon} ${i.text}`).join('\n')
+  const body = items.length > 5 ? `${preview}\n+${items.length - 5} more` : preview
+
+  try {
+    new Notification(title, { body, icon: '/icon-192.png', tag: 'due-today' })
+  } catch (err) {
+    console.error('Failed to show notification', err)
+  }
+}
+
 function Login() {
   const handleLogin = async () => {
     try {
@@ -1009,6 +1054,16 @@ function HomeDashboard({ onNavigate }) {
   ]
 
   const dueToday = withType.filter((i) => !i.done && i.dueDate === today)
+  const dueTodayKey = dueToday.map((i) => i.id).join(',')
+
+  // Debounced so the once-a-day notification fires against the settled list
+  // of due-today items, not whichever Firestore collection happens to sync
+  // in first.
+  useEffect(() => {
+    const timer = setTimeout(() => notifyDueToday(dueToday), 2500)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueTodayKey, today])
 
   const upcoming = withType
     .filter((i) => !i.done && i.dueDate && i.dueDate > today && i.dueDate <= weekAhead)
@@ -1174,6 +1229,7 @@ function Dashboard({ theme, toggleTheme }) {
   const tasks = useCollection('tasks')
   const chores = useCollection('chores')
   const today = todayStr()
+  const { permission: notifPermission, requestPermission: requestNotifPermission } = useNotifications()
 
   const tabCounts = {
     tasks: tasks.filter((t) => !t.done && t.dueDate === today).length,
@@ -1206,6 +1262,23 @@ function Dashboard({ theme, toggleTheme }) {
               alt={user.displayName || 'User'}
               className="w-9 h-9 rounded-full"
             />
+          )}
+          {notifPermission === 'default' && (
+            <button
+              onClick={requestNotifPermission}
+              className="text-sm bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-100 w-9 h-9 rounded-lg flex items-center justify-center"
+              title="Enable notifications for things due today"
+            >
+              🔔
+            </button>
+          )}
+          {notifPermission === 'denied' && (
+            <span
+              className="text-sm text-slate-400 dark:text-slate-500 w-9 h-9 rounded-lg flex items-center justify-center"
+              title="Notifications blocked — enable them in your browser's site settings to turn this back on"
+            >
+              🔕
+            </span>
           )}
           <button
             onClick={toggleTheme}
