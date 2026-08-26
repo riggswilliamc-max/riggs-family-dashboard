@@ -493,11 +493,109 @@ function eventCategory(item) {
   return item.category === 'Family' ? 'Family' : 'School'
 }
 
+const RECURRENCE_LABELS = { weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }
+
+function formatShortDate(dateStr) {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// e.g. "Aug 20 – Aug 27" for a multi-day span, or "" for a single day —
+// callers only show this when there's actually a range to show.
+function formatDateRangeLabel(startStr, endStr) {
+  if (!endStr || endStr === startStr) return ''
+  return `${formatShortDate(startStr)} – ${formatShortDate(endStr)}`
+}
+
 function toDateStr(d) {
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
+}
+
+// An event's effective last day — its own endDate when that's a real range,
+// otherwise just its start day (a single-day event).
+function eventEndDate(item) {
+  return item.endDate && item.endDate > item.dueDate ? item.endDate : item.dueDate
+}
+
+// Every YYYY-MM-DD string from startStr to endStr, inclusive.
+function dateRange(startStr, endStr) {
+  const start = new Date(startStr + 'T00:00:00')
+  const end = new Date(endStr + 'T00:00:00')
+  const dates = []
+  for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(toDateStr(d))
+  }
+  return dates
+}
+
+function daysBetweenDates(startStr, endStr) {
+  return Math.round((new Date(endStr + 'T00:00:00') - new Date(startStr + 'T00:00:00')) / 86400000)
+}
+
+function shiftDateStr(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return toDateStr(d)
+}
+
+// setMonth() alone drifts on month-end dates (Jan 31 + 1 month rolls into
+// March, since February doesn't have a 31st) — clamp to the target month's
+// actual last day instead so "the 31st" lands on Feb 28/29, not Mar 3.
+function addRecurrenceInterval(dateStr, freq, n) {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (freq === 'weekly') {
+    d.setDate(d.getDate() + 7 * n)
+    return toDateStr(d)
+  }
+  if (freq === 'monthly') {
+    const day = d.getDate()
+    const targetMonthIndex = d.getMonth() + n
+    const daysInTargetMonth = new Date(d.getFullYear(), targetMonthIndex + 1, 0).getDate()
+    return toDateStr(new Date(d.getFullYear(), targetMonthIndex, Math.min(day, daysInTargetMonth)))
+  }
+  if (freq === 'yearly') {
+    d.setFullYear(d.getFullYear() + n)
+    return toDateStr(d)
+  }
+  return toDateStr(d)
+}
+
+// Recurring events are only expanded out this far, so the calendar and the
+// "what's due" checks stay fast and finite instead of repeating forever.
+const RECURRENCE_HORIZON_DAYS = 730
+
+// Every {start, end} occurrence of an item — a single pair for a one-off
+// item, one pair per repeat (each shifted by the same span length, so a
+// multi-day recurring event keeps its length) for a recurring one.
+function eventOccurrences(item) {
+  const end = eventEndDate(item)
+  if (!item.recurrence) return [{ start: item.dueDate, end }]
+  const spanDays = daysBetweenDates(item.dueDate, end)
+  const horizon = addDaysStr(RECURRENCE_HORIZON_DAYS)
+  const occurrences = []
+  for (let n = 0; n < 500; n++) {
+    const start = addRecurrenceInterval(item.dueDate, item.recurrence, n)
+    if (start > horizon) break
+    occurrences.push({ start, end: shiftDateStr(start, spanDays) })
+  }
+  return occurrences
+}
+
+// True if any occurrence of a (possibly multi-day, possibly recurring) item
+// spans the given date, inclusive.
+function isActiveOn(item, dateStr) {
+  if (!item.dueDate) return false
+  return eventOccurrences(item).some((occ) => occ.start <= dateStr && dateStr <= occ.end)
+}
+
+// The earliest occurrence start date strictly after `afterDate` and up
+// through `throughDate`, or null if the item has none in that window.
+function nextOccurrenceStart(item, afterDate, throughDate) {
+  if (!item.dueDate) return null
+  const occ = eventOccurrences(item).find((o) => o.start > afterDate && o.start <= throughDate)
+  return occ ? occ.start : null
 }
 
 function monthMatrix(year, month) {
@@ -528,6 +626,8 @@ function CalendarView() {
   const [selectedDate, setSelectedDate] = useState(today)
   const [text, setText] = useState('')
   const [category, setCategory] = useState('Family')
+  const [endDate, setEndDate] = useState('')
+  const [recurrence, setRecurrence] = useState('')
   const { scheduleDelete, undoDelete, isPending, toast } = usePendingDeletes('events')
 
   const cells = monthMatrix(cursor.year, cursor.month)
@@ -541,8 +641,12 @@ function CalendarView() {
     .filter((ev) => !isPending(ev.id))
     .forEach((ev) => {
       if (!ev.dueDate) return
-      if (!eventsByDate[ev.dueDate]) eventsByDate[ev.dueDate] = []
-      eventsByDate[ev.dueDate].push(ev)
+      eventOccurrences(ev).forEach(({ start, end }) => {
+        dateRange(start, end).forEach((d) => {
+          if (!eventsByDate[d]) eventsByDate[d] = []
+          eventsByDate[d].push(ev)
+        })
+      })
     })
 
   const goPrev = () =>
@@ -565,12 +669,18 @@ function CalendarView() {
       createdBy: auth.currentUser?.displayName || 'Someone',
       createdAt: serverTimestamp(),
     }
+    if (endDate && endDate > selectedDate) payload.endDate = endDate
+    if (recurrence) payload.recurrence = recurrence
     setText('')
+    setEndDate('')
+    setRecurrence('')
     try {
       await addDoc(collection(db, 'events'), payload)
     } catch (err) {
       console.error('Failed to add event', err)
       setText(payload.text)
+      if (payload.endDate) setEndDate(payload.endDate)
+      if (payload.recurrence) setRecurrence(payload.recurrence)
       alert('Could not save that — check your connection and try again.')
     }
   }
@@ -676,27 +786,41 @@ function CalendarView() {
           <p className="text-sm text-slate-400 dark:text-slate-500 italic mb-3">No events this day.</p>
         ) : (
           <ul className="space-y-1 mb-3">
-            {selectedEvents.map((ev) => (
-              <li key={ev.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="flex items-center gap-2 dark:text-slate-200">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      CATEGORY_STYLES[eventCategory(ev)].badge
-                    }`}
-                  >
-                    {eventCategory(ev)}
+            {selectedEvents.map((ev) => {
+              // For a recurring event, label the specific occurrence being
+              // viewed (this week's span), not the original series dates.
+              const occ = eventOccurrences(ev).find((o) => o.start <= selectedDate && selectedDate <= o.end)
+              const rangeLabel = occ ? formatDateRangeLabel(occ.start, occ.end) : ''
+              return (
+                <li key={ev.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="flex items-center gap-2 flex-wrap dark:text-slate-200">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        CATEGORY_STYLES[eventCategory(ev)].badge
+                      }`}
+                    >
+                      {eventCategory(ev)}
+                    </span>
+                    {ev.text}
+                    {ev.recurrence && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500" title={RECURRENCE_LABELS[ev.recurrence]}>
+                        🔁 {RECURRENCE_LABELS[ev.recurrence]}
+                      </span>
+                    )}
+                    {rangeLabel && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">{rangeLabel}</span>
+                    )}
                   </span>
-                  {ev.text}
-                </span>
-                <button
-                  onClick={() => scheduleDelete(ev)}
-                  className="text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400"
-                  title="Delete"
-                >
-                  🗑️
-                </button>
-              </li>
-            ))}
+                  <button
+                    onClick={() => scheduleDelete(ev)}
+                    className="text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400"
+                    title={ev.recurrence ? 'Delete — removes every repeat of this event' : 'Delete'}
+                  >
+                    🗑️
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         )}
 
@@ -707,6 +831,29 @@ function CalendarView() {
             placeholder="Add an event..."
             className="flex-1 min-w-[140px] border dark:border-slate-600 rounded-lg px-3 py-2 text-sm dark:bg-slate-700 dark:text-white dark:placeholder:text-slate-400"
           />
+          <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+            <span>{formatShortDate(selectedDate)}</span>
+            <span>–</span>
+            <input
+              type="date"
+              value={endDate}
+              min={selectedDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              title="End date — leave blank for a single-day event"
+              className="border dark:border-slate-600 rounded-lg px-2 py-2 text-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-white w-[130px]"
+            />
+          </div>
+          <select
+            value={recurrence}
+            onChange={(e) => setRecurrence(e.target.value)}
+            title="Repeats"
+            className="border dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-white"
+          >
+            <option value="">Does not repeat</option>
+            <option value="weekly">Repeats weekly</option>
+            <option value="monthly">Repeats monthly</option>
+            <option value="yearly">Repeats yearly</option>
+          </select>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -761,7 +908,7 @@ function choreBadge(count) {
   if (count >= 30) return { label: 'Chore Master', icon: '🏆' }
   if (count >= 15) return { label: 'Superstar', icon: '🌟' }
   if (count >= 5) return { label: 'Chore Champ', icon: '⭐' }
-  return { label: 'Getting Started', icon: '🌱' }
+  return { label: 'Getting Started', icon: '🎮' }
 }
 
 function LucasChoreProgress() {
@@ -1053,7 +1200,9 @@ function HomeDashboard({ onNavigate }) {
     ...events.map((e) => ({ ...e, type: 'Event', typeIcon: '📅' })),
   ]
 
-  const dueToday = withType.filter((i) => !i.done && i.dueDate === today)
+  // isActiveOn covers multi-day and recurring events too, so a week-long
+  // visit or a weekly repeat still shows as "due" on every day it's live.
+  const dueToday = withType.filter((i) => !i.done && isActiveOn(i, today))
   const dueTodayKey = dueToday.map((i) => i.id).join(',')
 
   // Debounced so the once-a-day notification fires against the settled list
@@ -1065,9 +1214,13 @@ function HomeDashboard({ onNavigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dueTodayKey, today])
 
+  // For recurring/multi-day items, "upcoming" means their next occurrence
+  // starts within the week — not necessarily their original start date.
   const upcoming = withType
-    .filter((i) => !i.done && i.dueDate && i.dueDate > today && i.dueDate <= weekAhead)
-    .sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1))
+    .filter((i) => !i.done)
+    .map((i) => ({ ...i, upcomingDate: nextOccurrenceStart(i, today, weekAhead) }))
+    .filter((i) => i.upcomingDate)
+    .sort((a, b) => (a.upcomingDate > b.upcomingDate ? 1 : -1))
 
   const tasksDue = tasks.filter((t) => !t.done && t.dueDate).length
   const choresDue = chores.filter((c) => !c.done && c.dueDate).length
@@ -1173,7 +1326,7 @@ function HomeDashboard({ onNavigate }) {
                   ) : null}
                 </span>
                 <span className="text-slate-400 dark:text-slate-500">
-                  {item.dueDate} · {item.type}
+                  {item.upcomingDate} · {item.type}
                 </span>
               </li>
             ))}
