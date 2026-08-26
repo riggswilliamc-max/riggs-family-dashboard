@@ -356,7 +356,7 @@ function Section({ title, icon, name, placeholder, extraFields, allowClearComple
         </div>
       )}
 
-      <ul className="space-y-2 max-h-96 overflow-y-auto">
+      <ul className="space-y-4 sm:space-y-2 max-h-96 overflow-y-auto">
         {visibleItems.length === 0 && (
           <li className="text-sm text-slate-400 dark:text-slate-500 italic">
             {items.length === 0 ? 'Nothing here yet.' : `No items for ${filterAssignee}.`}
@@ -365,7 +365,7 @@ function Section({ title, icon, name, placeholder, extraFields, allowClearComple
         {visibleItems.map((item) => (
           <li
             key={item.id}
-            className="flex items-center justify-between gap-2 border-b dark:border-slate-700 last:border-b-0 pb-2"
+            className="flex items-center justify-between gap-2 border-b dark:border-slate-700 last:border-b-0 pb-3 sm:pb-2"
           >
             <button
               onClick={() => toggleDone(item)}
@@ -452,7 +452,7 @@ function NotesFeed() {
       {visibleNotes.length === 0 ? (
         <p className="text-sm text-slate-400 dark:text-slate-500 italic">Nothing here yet.</p>
       ) : (
-        <div className="space-y-3 max-h-96 overflow-y-auto">
+        <div className="space-y-4 sm:space-y-3 max-h-96 overflow-y-auto">
           {visibleNotes.map((note) => (
             <div
               key={note.id}
@@ -1102,7 +1102,7 @@ function HomeDashboard({ onNavigate }) {
           <p className="font-semibold mb-2">
             ⚠️ Due Today: {dueToday.length} item{dueToday.length > 1 ? 's' : ''}
           </p>
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-3 sm:space-y-1 text-sm">
             {dueToday.map((item) => (
               <li key={item.id} className="flex items-center gap-2 flex-wrap">
                 <span>
@@ -1154,11 +1154,11 @@ function HomeDashboard({ onNavigate }) {
         {upcoming.length === 0 ? (
           <p className="text-sm text-slate-400 dark:text-slate-500 italic">Nothing coming up this week.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-4 sm:space-y-2">
             {upcoming.map((item) => (
               <li
                 key={item.id}
-                className="flex items-center justify-between gap-2 flex-wrap border-b dark:border-slate-700 last:border-b-0 pb-2 text-sm"
+                className="flex items-center justify-between gap-2 flex-wrap border-b dark:border-slate-700 last:border-b-0 pb-3 sm:pb-2 text-sm"
               >
                 <span className="flex items-center gap-2 dark:text-slate-200">
                   {item.typeIcon} {item.text}
