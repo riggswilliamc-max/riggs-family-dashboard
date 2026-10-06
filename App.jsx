@@ -166,11 +166,12 @@ function useNotifications() {
   return { permission, requestPermission }
 }
 
-// Fires a single once-per-day "here's what's due today" browser
-// notification. Safe to call on every render — it no-ops once it's already
-// notified for today (tracked in localStorage), so nothing spams the user
-// as items load in from Firestore.
-function notifyDueToday(items) {
+// Fires a single once-per-day "here's what's on today" browser
+// notification: tasks and chores that are due, plus events happening today.
+// Safe to call on every render — it no-ops once it's already notified for
+// today (tracked in localStorage), so nothing spams the user as items load
+// in from Firestore.
+function notifyToday(dueItems, eventItems) {
   if (typeof window === 'undefined' || !('Notification' in window)) return
   if (Notification.permission !== 'granted') return
 
@@ -178,9 +179,13 @@ function notifyDueToday(items) {
   if (window.localStorage.getItem('lastNotifiedDate') === todayKey) return
   window.localStorage.setItem('lastNotifiedDate', todayKey)
 
+  const items = [...dueItems, ...eventItems]
   if (items.length === 0) return
 
-  const title = items.length === 1 ? '1 thing due today' : `${items.length} things due today`
+  const titleParts = []
+  if (dueItems.length > 0) titleParts.push(`${dueItems.length} due today`)
+  if (eventItems.length > 0) titleParts.push(`${eventItems.length} event${eventItems.length > 1 ? 's' : ''} today`)
+  const title = titleParts.join(' · ')
   const preview = items.slice(0, 5).map((i) => `${i.typeIcon} ${i.text}`).join('\n')
   const body = items.length > 5 ? `${preview}\n+${items.length - 5} more` : preview
 
@@ -1309,19 +1314,23 @@ function HomeDashboard({ onNavigate }) {
     ...events.map((e) => ({ ...e, type: 'Event', typeIcon: '📅' })),
   ]
 
+  // Tasks and chores are "due" and get checked off. Events aren't — they
+  // just happen — so they're listed separately as what's on today.
   // isActiveOn covers multi-day and recurring events too, so a week-long
-  // visit or a weekly repeat still shows as "due" on every day it's live.
-  const dueToday = withType.filter((i) => !i.done && isActiveOn(i, today))
+  // visit or a weekly repeat still shows on every day it's live.
+  const dueToday = withType.filter((i) => i.type !== 'Event' && !i.done && isActiveOn(i, today))
+  const eventsToday = withType.filter((i) => i.type === 'Event' && isActiveOn(i, today))
   const dueTodayKey = dueToday.map((i) => i.id).join(',')
+  const eventsTodayKey = eventsToday.map((i) => i.id).join(',')
 
   // Debounced so the once-a-day notification fires against the settled list
-  // of due-today items, not whichever Firestore collection happens to sync
+  // of today's items, not whichever Firestore collection happens to sync
   // in first.
   useEffect(() => {
-    const timer = setTimeout(() => notifyDueToday(dueToday), 2500)
+    const timer = setTimeout(() => notifyToday(dueToday, eventsToday), 2500)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dueTodayKey, today])
+  }, [dueTodayKey, eventsTodayKey, today])
 
   // For recurring/multi-day items, "upcoming" means their next occurrence
   // starts within the week — not necessarily their original start date.
@@ -1348,6 +1357,8 @@ function HomeDashboard({ onNavigate }) {
     greetingSubtext = `${dueToday.length} item${
       dueToday.length > 1 ? 's are' : ' is'
     } due today for the family.`
+  } else if (eventsToday.length > 0) {
+    greetingSubtext = `${eventsToday.length} event${eventsToday.length > 1 ? 's' : ''} on the calendar today.`
   }
 
   return (
@@ -1379,6 +1390,26 @@ function HomeDashboard({ onNavigate }) {
                 ) : null}
               </li>
             ))}
+          </ul>
+        </div>
+      )}
+
+      {eventsToday.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 rounded-2xl p-4">
+          <p className="font-semibold mb-2">📅 Today on the Calendar</p>
+          <ul className="space-y-3 sm:space-y-1 text-sm">
+            {eventsToday.map((ev) => {
+              const occ = eventOccurrences(ev).find((o) => o.start <= today && today <= o.end)
+              const rangeLabel = occ ? formatDateRangeLabel(occ.start, occ.end) : ''
+              return (
+                <li key={ev.id} className="flex items-center gap-2 flex-wrap">
+                  <span>{ev.text}</span>
+                  {rangeLabel && (
+                    <span className="text-xs text-blue-500 dark:text-blue-400">{rangeLabel}</span>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}
@@ -1529,7 +1560,7 @@ function Dashboard({ theme, toggleTheme }) {
             <button
               onClick={requestNotifPermission}
               className="text-sm bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-100 w-9 h-9 rounded-lg flex items-center justify-center"
-              title="Enable notifications for things due today"
+              title="Enable notifications for what is on today"
             >
               🔔
             </button>
