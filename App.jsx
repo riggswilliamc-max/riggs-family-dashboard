@@ -10,6 +10,7 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  deleteField,
 } from 'firebase/firestore'
 import { auth, googleProvider, db } from './firebase'
 
@@ -628,7 +629,42 @@ function CalendarView() {
   const [category, setCategory] = useState('Family')
   const [endDate, setEndDate] = useState('')
   const [recurrence, setRecurrence] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [edit, setEdit] = useState({ text: '', dueDate: '', endDate: '', recurrence: '', category: 'Family' })
   const { scheduleDelete, undoDelete, isPending, toast } = usePendingDeletes('events')
+
+  const startEdit = (ev) => {
+    setEditingId(ev.id)
+    setEdit({
+      text: ev.text || '',
+      dueDate: ev.dueDate || '',
+      endDate: ev.endDate || '',
+      recurrence: ev.recurrence || '',
+      category: eventCategory(ev),
+    })
+  }
+
+  const saveEdit = async (e) => {
+    e.preventDefault()
+    if (!edit.text.trim() || !edit.dueDate) return
+    const payload = {
+      text: edit.text.trim(),
+      dueDate: edit.dueDate,
+      category: edit.category,
+      endDate: edit.endDate && edit.endDate > edit.dueDate ? edit.endDate : deleteField(),
+      recurrence: edit.recurrence ? edit.recurrence : deleteField(),
+    }
+    try {
+      await updateDoc(doc(db, 'events', editingId), payload)
+      setEditingId(null)
+      setSelectedDate(edit.dueDate)
+      const [y, m] = edit.dueDate.split('-').map(Number)
+      setCursor({ year: y, month: m - 1 })
+    } catch (err) {
+      console.error('Failed to update event', err)
+      alert('Could not save that — check your connection and try again.')
+    }
+  }
 
   const cells = monthMatrix(cursor.year, cursor.month)
   const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString('en-US', {
@@ -791,6 +827,70 @@ function CalendarView() {
               // viewed (this week's span), not the original series dates.
               const occ = eventOccurrences(ev).find((o) => o.start <= selectedDate && selectedDate <= o.end)
               const rangeLabel = occ ? formatDateRangeLabel(occ.start, occ.end) : ''
+              if (editingId === ev.id) {
+                const fieldCls =
+                  'border dark:border-slate-600 rounded-lg px-2 py-2 text-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-white'
+                return (
+                  <li key={ev.id} className="text-sm">
+                    <form onSubmit={saveEdit} className="flex flex-wrap gap-2 items-center">
+                      <input
+                        value={edit.text}
+                        onChange={(e) => setEdit({ ...edit, text: e.target.value })}
+                        autoFocus
+                        className={`${fieldCls} flex-1 min-w-[140px]`}
+                      />
+                      <input
+                        type="date"
+                        value={edit.dueDate}
+                        onChange={(e) => setEdit({ ...edit, dueDate: e.target.value })}
+                        title="Start date"
+                        className={`${fieldCls} w-[140px]`}
+                      />
+                      <span className="text-slate-400">–</span>
+                      <input
+                        type="date"
+                        value={edit.endDate}
+                        min={edit.dueDate}
+                        onChange={(e) => setEdit({ ...edit, endDate: e.target.value })}
+                        title="End date — leave blank for a single-day event"
+                        className={`${fieldCls} w-[140px]`}
+                      />
+                      <select
+                        value={edit.recurrence}
+                        onChange={(e) => setEdit({ ...edit, recurrence: e.target.value })}
+                        title="Repeats"
+                        className={fieldCls}
+                      >
+                        <option value="">Does not repeat</option>
+                        <option value="weekly">Repeats weekly</option>
+                        <option value="monthly">Repeats monthly</option>
+                        <option value="yearly">Repeats yearly</option>
+                      </select>
+                      <select
+                        value={edit.category}
+                        onChange={(e) => setEdit({ ...edit, category: e.target.value })}
+                        className={fieldCls}
+                      >
+                        <option value="Family">Family</option>
+                        <option value="School">School</option>
+                      </select>
+                      <button
+                        type="submit"
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="text-sm px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  </li>
+                )
+              }
               return (
                 <li key={ev.id} className="flex items-center justify-between gap-2 text-sm">
                   <span className="flex items-center gap-2 flex-wrap dark:text-slate-200">
@@ -811,13 +911,22 @@ function CalendarView() {
                       <span className="text-xs text-slate-400 dark:text-slate-500">{rangeLabel}</span>
                     )}
                   </span>
-                  <button
-                    onClick={() => scheduleDelete(ev)}
-                    className="text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400"
-                    title={ev.recurrence ? 'Delete — removes every repeat of this event' : 'Delete'}
-                  >
-                    🗑️
-                  </button>
+                  <span className="flex items-center gap-2">
+                    <button
+                      onClick={() => startEdit(ev)}
+                      className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400"
+                      title={ev.recurrence ? 'Edit — changes every repeat of this event' : 'Edit'}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => scheduleDelete(ev)}
+                      className="text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400"
+                      title={ev.recurrence ? 'Delete — removes every repeat of this event' : 'Delete'}
+                    >
+                      🗑️
+                    </button>
+                  </span>
                 </li>
               )
             })}
